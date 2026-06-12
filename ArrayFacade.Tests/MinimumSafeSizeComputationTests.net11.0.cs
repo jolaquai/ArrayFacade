@@ -17,6 +17,7 @@ public partial class MinimumSafeSizeComputationTests
     [InlineData(typeof(Int128))]
     public void UnsupportedType_Throws(Type type)
     {
-        Assert.Throws<NotSupportedException>(() => (nuint)ArrayFacadeHandle.ComputeMinimumSafeSizeFor(type, 0));
+        // type support is a stamp-time concern, so rejection happens at length > 0 (length 0 is always free)
+        Assert.Throws<NotSupportedException>(() => (nuint)ArrayFacadeHandle.ComputeMinimumSafeSizeFor(type, 1));
     }
 }

@@ -12,12 +12,6 @@ internal static class Helpers
         var a = alignment - 1;
         return (value + a) & ~a;
     }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static nint AlignUp(nint value, nint alignment)
-    {
-        var a = alignment - 1;
-        return (value + a) & ~a;
-    }
 
     public static unsafe void CheckTypeSupport<T>() where T : unmanaged
     {

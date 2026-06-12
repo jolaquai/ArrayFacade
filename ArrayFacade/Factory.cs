@@ -21,11 +21,8 @@ internal static class Factory
     /// </summary>
     internal static unsafe T[] FakeArray<T>(void* raw, int len, int sizeofRaw) where T : unmanaged // reserve >= 3*IntPtr.Size + (IntPtr.Size-1) + len*sizeof(T) at raw
     {
-        if (len == 0)
-            return [];
-
-        Helpers.CheckTypeSupport<T>();
-
+        // Mirror ComputeMinimumSafeSizeFor: validate length range, satisfy length 0 for any T
+        // with a real [] (no stamp, no type check), then validate type support for length > 0.
         if (len < 0)
         {
             ThrowHelpers.ThrowLengthNegative();
@@ -36,6 +33,10 @@ internal static class Factory
             ThrowHelpers.ThrowLengthGreaterThanArrayMaxLength();
             return null;
         }
+        if (len == 0)
+            return [];
+
+        Helpers.CheckTypeSupport<T>();
 
         if ((nuint)raw == 0)
         {
@@ -47,13 +48,32 @@ internal static class Factory
         var o = Helpers.AlignUp((nuint)raw, size);
         var alignDiff = o - (nuint)raw;
 
-        if ((uint)sizeofRaw < alignDiff + 3 * (nuint)IntPtr.Size + (nuint)sizeof(T) * (nuint)len)
+        var required = alignDiff + 3 * (nuint)IntPtr.Size + (nuint)sizeof(T) * (nuint)len;
+        if ((uint)sizeofRaw < required)
         {
-            ThrowHelpers.ThrowSizeofRawTooSmall<T>(len, sizeofRaw);
+            ThrowHelpers.ThrowSizeofRawTooSmall<T>(len, sizeofRaw, required);
             return null;
         }
 
         return FakeArrayTrusted<T>((void*)o, len);
+    }
+
+    /// <summary>
+    /// Caches the MethodTable pointer of <typeparamref name="T"/>[], read from the header of a live probe instance.
+    /// On .NET Framework, <c>typeof(T[]).TypeHandle.Value</c> is a tagged ArrayTypeDesc*, NOT the MethodTable*,
+    /// so it must never be stamped into an object header; reading a real array's header works on every runtime.
+    /// </summary>
+    private static class ArrayMethodTable<T> where T : unmanaged
+    {
+        public static readonly nint Value = Read();
+        private static unsafe nint Read()
+        {
+            var probe = new T[1];
+            fixed (T* _ = probe)
+            {
+                return *(nint*)Unsafe.As<T[], nint>(ref probe);
+            }
+        }
     }
 
     /// <summary>
@@ -65,7 +85,7 @@ internal static class Factory
         var size = (nuint)IntPtr.Size;
         ref var header = ref Unsafe.AsRef<ObjectHeader>(raw);
         header.SyncBlock = 0;
-        header.MethodTablePointer = typeof(T[]).TypeHandle.Value;
+        header.MethodTablePointer = ArrayMethodTable<T>.Value;
         header.Length = len;
         var objRef = (nint)Unsafe.AsPointer(ref header.MethodTablePointer);
         return Unsafe.As<nint, T[]>(ref objRef);

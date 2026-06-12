@@ -9,9 +9,12 @@ public partial class MinimumSafeSizeComputationTests
     [InlineData(typeof(long))]
     [InlineData(typeof(float))]
     [InlineData(typeof(double))]
-    public void ZeroLength_IsNotTypeDependent(Type type)
+    [InlineData(typeof(decimal))] // even an unsupported (>8 byte) element type: length 0 is always free
+    [InlineData(typeof(Guid))]
+    public void ZeroLength_IsAlwaysFreeAndTypeIndependent(Type type)
     {
-        var size = ArrayFacadeHandle.ComputeMinimumSafeSizeFor(type, 0);
-        Assert.Equal(3 * (nuint)IntPtr.Size, size);
+        // A length-0 fake is never stamped, so it needs no backing memory and never consults
+        // element-type support. Same answer for every T, supported or not.
+        Assert.Equal((nuint)0, ArrayFacadeHandle.ComputeMinimumSafeSizeFor(type, 0));
     }
 }
