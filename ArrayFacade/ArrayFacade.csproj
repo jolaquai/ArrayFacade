@@ -38,7 +38,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-      <None Include="..\LICENSE" Pack="True" PackagePath="/" />
+      <None Include="..\LICENSE;..\README.md" Pack="True" PackagePath="/" />
 
       <Using Include="System.Runtime.InteropServices" />
       <Using Include="System.Runtime.CompilerServices" />
