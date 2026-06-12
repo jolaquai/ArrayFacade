@@ -85,6 +85,15 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
         return (T*)DataOffset;
     }
 
+    /// <summary>
+    /// Gets whether the current runtime lays objects out the way this library fabricates them.
+    /// This is verified once at startup by probing live array instances (reads only; nothing is stamped).
+    /// When <see langword="false"/>, any attempt to create a fake with a length greater than 0, as well as
+    /// any size computation for one, throws <see cref="PlatformNotSupportedException"/> before touching memory.
+    /// Zero-length use remains valid on any runtime.
+    /// </summary>
+    public static bool IsSupported => Factory.IsSupported;
+
     private static readonly nuint _worstAlignDiff = (nuint)IntPtr.Size - 1;
 
     /// <summary>
@@ -111,10 +120,16 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
             return 0;
         }
         // A length-0 fake is never stamped (Use hands back a real []), so it needs no
-        // backing memory and is valid for any T. Element-type support is a stamp-time
-        // concern, checked only when length > 0.
+        // backing memory and is valid for any T on any runtime. Runtime layout and
+        // element-type support are stamp-time concerns, checked only when length > 0.
         if (length == 0)
             return 0;
+
+        if (!Factory.IsSupported)
+        {
+            ThrowHelpers.ThrowPlatformNotSupported();
+            return 0;
+        }
 
         Helpers.CheckTypeSupport<T>();
 

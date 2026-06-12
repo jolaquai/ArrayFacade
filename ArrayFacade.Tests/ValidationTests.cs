@@ -76,6 +76,15 @@ public unsafe class ValidationTests
     }
 
     [Fact]
+    public void IsSupported_IsTrueOnEveryRuntimeInTheTestMatrix()
+    {
+        // Every cell of the CI matrix is a CLR-family runtime, so the startup layout
+        // probe must pass. On a non-CLR runtime (Mono, IL2CPP) this is the assert that
+        // fails first — by design, instead of memory corruption later.
+        Assert.True(ArrayFacadeHandle.IsSupported);
+    }
+
+    [Fact]
     public void Use_RejectsNullPointer()
     {
         var ex = Record.Exception(static () => new ArrayFacadeHandle(null, 64).Use<byte>(1, static _ => { }));

@@ -1,0 +1,86 @@
+name: Tests
+
+# Test-only workflow. This repository has NO automated release pipeline, by design:
+# nothing in here (or anywhere else in CI) tags, packs, publishes, or creates releases.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      # every cell must RUN: one failing cell must not cancel its siblings
+      fail-fast: false
+      matrix:
+        include:
+          - name: net48 x64 (Windows)
+            os: windows-latest
+            tfm: net48
+            arch: x64
+          - name: net48 x86 (Windows)
+            os: windows-latest
+            tfm: net48
+            arch: x86
+          - name: net11.0 x64 (Windows)
+            os: windows-latest
+            tfm: net11.0
+            arch: x64
+          - name: net11.0 x64 (Linux)
+            os: ubuntu-latest
+            tfm: net11.0
+            arch: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 11.0.x
+          dotnet-quality: preview
+
+      - name: Test
+        if: matrix.arch == 'x64'
+        run: dotnet test ArrayFacade.Tests/ArrayFacade.Tests.csproj -f ${{ matrix.tfm }} -c Release
+
+      # 32-bit netfx: PlatformTarget must be baked in at build time; the
+      # Microsoft.Testing.Platform runner exe is then executed directly (WOW64).
+      - name: Build (x86)
+        if: matrix.arch == 'x86'
+        run: dotnet build ArrayFacade.Tests/ArrayFacade.Tests.csproj -f ${{ matrix.tfm }} -c Release -p:PlatformTarget=x86
+
+      - name: Test (x86)
+        if: matrix.arch == 'x86'
+        run: ./ArrayFacade.Tests/bin/Release/${{ matrix.tfm }}/ArrayFacade.Tests.exe
+
+  # Single gate that is green only if EVERY matrix cell ran and passed.
+  # Use this job (not 'test') as the required status check in branch protection,
+  # so adding/removing cells never silently weakens the requirement.
+  all-cells-passed:
+    name: All matrix cells passed
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every cell ran and passed
+        run: |
+          result="${{ needs.test.result }}"
+          echo "Matrix result: $result"
+          if [ "$result" != "success" ]; then
+            echo "::error::At least one test matrix cell failed, was cancelled, or was skipped."
+            exit 1
+          fi

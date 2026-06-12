@@ -4,6 +4,10 @@
     <BuildType Name="Optimize" />
     <BuildType Name="Release" />
   </Configurations>
+  <Folder Name="/.github/" />
+  <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/tests.yml" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".gitattributes" />
     <File Path=".gitignore" />

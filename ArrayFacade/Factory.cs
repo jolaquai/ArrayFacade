@@ -8,6 +8,53 @@
 /// </remarks>
 internal static class Factory
 {
+    /// <summary>
+    /// Whether the current runtime lays objects out the way this library stamps fakes.
+    /// Determined once, by probing live array instances with reads only — nothing is stamped.
+    /// </summary>
+    internal static readonly bool IsSupported;
+
+    static Factory()
+    {
+        IsSupported = VerifyRuntimeLayout();
+    }
+
+    /// <summary>
+    /// Verifies, using only reads of real arrays, that this runtime matches the fabricated model:
+    /// an SZ array reference points at the MethodTable* slot, its int32 length lives exactly one
+    /// pointer past the reference, and its data exactly two. Runtimes with a different object model
+    /// (Mono, IL2CPP) fail the first check; a future CLR layout change fails loudly here instead of
+    /// corrupting silently.
+    /// </summary>
+    private static unsafe bool VerifyRuntimeLayout()
+    {
+        try
+        {
+            var probe1 = new byte[17];
+            var probe2 = new byte[23];
+            fixed (byte* data1 = probe1)
+            fixed (byte* data2 = probe2)
+            {
+                var objRef1 = Unsafe.As<byte[], nint>(ref probe1);
+                var objRef2 = Unsafe.As<byte[], nint>(ref probe2);
+
+                // data must start exactly 2 words past the reference
+                if ((nint)data1 - objRef1 != 2 * IntPtr.Size || (nint)data2 - objRef2 != 2 * IntPtr.Size)
+                    return false;
+                // the int32 length must live exactly 1 word past the reference
+                if (*(int*)(objRef1 + IntPtr.Size) != 17 || *(int*)(objRef2 + IntPtr.Size) != 23)
+                    return false;
+                // the type identity word must be stable across instances of the same T
+                return *(nint*)objRef1 == *(nint*)objRef2;
+            }
+        }
+        catch
+        {
+            // a runtime exotic enough to throw on the probes is a runtime we don't support
+            return false;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct ObjectHeader
     {
@@ -22,7 +69,8 @@ internal static class Factory
     internal static unsafe T[] FakeArray<T>(void* raw, int len, int sizeofRaw) where T : unmanaged // reserve >= 3*IntPtr.Size + (IntPtr.Size-1) + len*sizeof(T) at raw
     {
         // Mirror ComputeMinimumSafeSizeFor: validate length range, satisfy length 0 for any T
-        // with a real [] (no stamp, no type check), then validate type support for length > 0.
+        // on any runtime with a real [] (no stamp, no checks), then validate runtime layout
+        // and type support for length > 0.
         if (len < 0)
         {
             ThrowHelpers.ThrowLengthNegative();
@@ -35,6 +83,12 @@ internal static class Factory
         }
         if (len == 0)
             return [];
+
+        if (!IsSupported)
+        {
+            ThrowHelpers.ThrowPlatformNotSupported();
+            return null;
+        }
 
         Helpers.CheckTypeSupport<T>();
 

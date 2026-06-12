@@ -34,4 +34,9 @@ internal static class ThrowHelpers
     [System.Diagnostics.CodeAnalysis.DoesNotReturn]
 #endif
     public static void ThrowAttemptedAliasing() => throw new InvalidOperationException($"An attempt was made to call {nameof(ArrayFacadeHandle)}.{nameof(ArrayFacadeHandle.Use)} on the same handle while a call to that method was already in-flight. Memory aliasing through two separate array fakes is not allowed.");
+    [MethodImpl(MethodImplOptions.NoInlining)]
+#if !NETSTANDARD2_0
+    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+#endif
+    public static void ThrowPlatformNotSupported() => throw new PlatformNotSupportedException($"The current runtime does not lay objects out the way {nameof(ArrayFacade)} fabricates them (verified at startup by probing live array instances); array fakes cannot function here and no memory was touched. Only CLR-family runtimes (.NET Framework, .NET Core/.NET) are supported. Check {nameof(ArrayFacadeHandle)}.{nameof(ArrayFacadeHandle.IsSupported)} before use; zero-length use remains valid on any runtime.");
 }

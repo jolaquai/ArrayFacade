@@ -8,6 +8,8 @@ The thing it "handles" shall be referred to as a "fake"; that is, an instance of
 ```csharp
 public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
 {
+    public static bool IsSupported { get; }
+
     public readonly void* DataOffset { get; }
     public readonly ref byte DataOffsetRef { get; }
 
@@ -150,3 +152,10 @@ However, handles are *not* re-entrant: calling `Use` on a handle while another `
 ## Supported runtimes
 
 The fabricated header must match the runtime's real object layout, byte for byte. That holds for the CLR family on which the library's test matrix runs: .NET Framework (32- and 64-bit) and .NET Core/.NET. **Mono and Unity's scripting runtimes lay objects out differently and are not supported. NativeAOT is untested.**
+
+The library does not take this on faith. At first use it probes live array instances — reads only, nothing is stamped — and verifies the exact shape it is about to fabricate: reference at the `MethodTable*` slot, `int32` length one pointer past it, data two pointers past it. `ArrayFacadeHandle.IsSupported` exposes the verdict, so you can feature-detect instead of catching:
+
+- `IsSupported == true`: the runtime matches; everything behaves as documented.
+- `IsSupported == false`: any stamping API — `Use` with a length > 0, or `ComputeMinimumSafeSizeFor` for such a length — throws `PlatformNotSupportedException` *before touching any memory*. Zero-length use remains valid everywhere (a real `[]` is handed out; nothing is stamped).
+
+This gate also covers the future: if a CLR version ever changes its object layout, the library bricks loudly at first use instead of corrupting silently.

@@ -48,7 +48,7 @@ var result = new ReadOnlySpan<byte>(data, read);
 - **Element types**: any `unmanaged` type with `sizeof(T) <= 8`. Wider types (`decimal`, `Guid`, `Vector128<T>`, ...) are rejected with `NotSupportedException`, mirroring the BCL's array alignment guarantees.
 - **Lengths**: `0` through `0x7FFFFFC7` (`Array.MaxLength`). Length 0 is always free: no memory is needed or touched, the delegate receives a real `[]`, and that works for *any* element type.
 - **Target frameworks**: `netstandard2.0` and `netstandard2.1` so that it is usable from .NET Framework all the way to current .NET (though largely unnecessary unless you need to interop with older APIs).
-- **Runtimes**: the CLR family only (that is, .NET Framework (32- and 64-bit) and .NET Core/.NET), where the fabricated header layout matches reality. The behavior is pinned by a test matrix that runs on 32-bit netfx, 64-bit netfx, and modern .NET. **Mono and Unity's scripting runtimes lay objects out differently and are not supported. NativeAOT is untested.**
+- **Runtimes**: the CLR family only (that is, .NET Framework (32- and 64-bit) and .NET Core/.NET), where the fabricated header layout matches reality. The behavior is pinned by a test matrix that runs on 32-bit netfx, 64-bit netfx, and modern .NET. **Mono and Unity's scripting runtimes lay objects out differently and are not supported. NativeAOT is untested.** This is enforced, not assumed: the layout is verified at startup by probing live arrays, `ArrayFacadeHandle.IsSupported` exposes the verdict, and on a runtime that doesn't match, every stamping API throws `PlatformNotSupportedException` before touching memory instead of corrupting it.
 
 ## License
 
