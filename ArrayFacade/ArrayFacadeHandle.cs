@@ -7,7 +7,7 @@ namespace ArrayFacade;
 /// Creates a wrapper for a raw pointer to memory that can be treated as arrays of <see langword="unmanaged"/> types.
 /// </summary>
 /// <param name="raw">A pointer to the memory to be treated as an array. Must be writable and kept alive for the duration of the wrapper's use.</param>
-/// <param name="sizeofRaw">The size (in bytes) that <paramref name="raw"/> points at. Must large enough to house the array fake's manufactured object header.</param>
+/// <param name="sizeofRaw">The size (in bytes) that <paramref name="raw"/> points at. Must be large enough to house the array fake's manufactured object header as well as the elements of any fake created through this handle.</param>
 public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
 {
     /// <summary>

@@ -26,6 +26,44 @@ public unsafe class LifetimeTests
     }
 
     [Fact]
+    public void SequentialReuse_ReinterpretsDataInPlace()
+    {
+        const int ByteLen = 64;
+        var size = (int)ArrayFacadeHandle.ComputeMinimumSafeSizeFor<byte>(ByteLen);
+        var buf = stackalloc byte[size];
+        var handle = new ArrayFacadeHandle(buf, size);
+
+        // distinct, non-periodic byte pattern so any offset/aliasing error shows up
+        var pattern = new byte[ByteLen];
+        for (var i = 0; i < ByteLen; i++)
+            pattern[i] = (byte)((i * 7) + 3);
+
+        var bytesAt = handle.Use<byte>(ByteLen, fake =>
+        {
+            for (var i = 0; i < ByteLen; i++)
+                fake[i] = (byte)((i * 7) + 3);
+        });
+
+        // same handle, same memory, new element type: the data is reinterpreted in place
+        var intsAt = handle.Use<int>(ByteLen / sizeof(int), fake =>
+        {
+            for (var i = 0; i < fake.Length; i++)
+                Assert.Equal(BitConverter.ToInt32(pattern, i * sizeof(int)), fake[i]);
+        });
+
+        var ulongsAt = handle.Use<ulong>(ByteLen / sizeof(ulong), fake =>
+        {
+            for (var i = 0; i < fake.Length; i++)
+                Assert.Equal(BitConverter.ToUInt64(pattern, i * sizeof(ulong)), fake[i]);
+        });
+
+        // "zero-work" is literal: element 0 of every fake sits at the same address
+        // regardless of T, so nothing was copied or moved between the calls
+        Assert.True((nint)bytesAt == (nint)intsAt);
+        Assert.True((nint)intsAt == (nint)ulongsAt);
+    }
+
+    [Fact]
     public void ZeroLength_RunsActionWithRealEmptyArray_AndReleasesTheHandle()
     {
         var size = (int)ArrayFacadeHandle.ComputeMinimumSafeSizeFor<byte>(8);
