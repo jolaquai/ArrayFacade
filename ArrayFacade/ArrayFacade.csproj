@@ -2,10 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <TargetFrameworks>netstandard2.0;netstandard2.1;net10.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+
+    <Configurations>Debug;Release;Optimize</Configurations>
+    <Optimize Condition="'$(Configuration)' != 'Debug'">True</Optimize>
+    <Optimize Condition="'$(Configuration)' == 'Debug'">False</Optimize>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -38,6 +42,7 @@
 
       <Using Include="System.Runtime.InteropServices" />
       <Using Include="System.Runtime.CompilerServices" />
+      <Using Include="System.Diagnostics" />
 
       <PackageReference Condition="'$(TargetFrameworkIdentifier)' == '.NETStandard'" Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
   </ItemGroup>

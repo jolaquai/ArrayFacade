@@ -8,46 +8,76 @@
 /// </remarks>
 internal static class Factory
 {
-    /// <summary>
-    /// Establishes memory that can be treated as an array of <typeparamref name="T"/> starting at the memory pointed to by <paramref name="raw"/>.
-    /// 
-    /// </summary>
-    /// <typeparam name="T"></typeparam>
-    /// <param name="raw"></param>
-    /// <param name="len"></param>
-    /// <param name="sizeofRaw"></param>
-    /// <returns></returns>
-    internal static unsafe T[] FakeArray<T>(void* raw, int len, nuint sizeofRaw) where T : unmanaged // reserve >= 3*IntPtr.Size + (IntPtr.Size-1) + len*sizeof(T) at raw
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ObjectHeader
     {
-        var size = (nuint)IntPtr.Size;
-        if (len < 0 || sizeofRaw < 3 * size + (size - 1) + (nuint)(uint)len * (nuint)sizeof(T))
-            ThrowSizeofRawTooSmall<T>(len, sizeofRaw);
-
-        var o = ((nuint)raw + size + (size - 1)) & ~(size - 1);
-        *(nint*)(o - size) = 0;
-        *(nint*)o = typeof(T[]).TypeHandle.Value;
-        *(int*)(o + size) = len;
-        return Unsafe.As<nuint, T[]>(ref o);
+        public nint SyncBlock;
+        public nint MethodTablePointer;
+        public int Length;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#if !NETSTANDARD2_0
-    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
-#endif
-    private static void ThrowUnsupportedT(Type type) => throw new NotSupportedException($"Type '{type.FullName}' is not supported for array facades. Only blittable (unmanaged) types are supported.");
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#if !NETSTANDARD2_0
-    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
-#endif
-    private static void ThrowSizeofRawTooSmall<T>(int len, nuint sizeofRaw) => throw new ArgumentException($"The provided size of raw ({sizeofRaw} bytes) is too small to establish an array facade of type '{typeof(T).FullName}' with length {len}. At least {4 * IntPtr.Size + (len * Unsafe.SizeOf<T>())} bytes are required.");
+    /// <summary>
+    /// Establishes memory that can be treated as an array of <typeparamref name="T"/> starting at the memory pointed to by <paramref name="raw"/>, plus alignment padding upward, plus space for the fake's object header (starting at the sync block).
+    /// </summary>
+    internal static unsafe T[] FakeArray<T>(void* raw, int len, int sizeofRaw) where T : unmanaged // reserve >= 3*IntPtr.Size + (IntPtr.Size-1) + len*sizeof(T) at raw
+    {
+        if (len == 0)
+            return [];
 
-    static unsafe byte[] FakeArray(byte* raw, int len) // reserve >= 4*IntPtr.Size + len at raw
+        Helpers.CheckTypeSupport<T>();
+
+        if (len < 0)
+        {
+            ThrowHelpers.ThrowLengthNegative();
+            return null;
+        }
+        if (len > 0x7FFFFFC7)
+        {
+            ThrowHelpers.ThrowLengthGreaterThanArrayMaxLength();
+            return null;
+        }
+
+        if ((nuint)raw == 0)
+        {
+            ThrowHelpers.ThrowNullPointerRaw();
+            return null;
+        }
+
+        var size = (nuint)IntPtr.Size;
+        var o = Helpers.AlignUp((nuint)raw, size);
+        var alignDiff = o - (nuint)raw;
+
+        if ((uint)sizeofRaw < alignDiff + 3 * (nuint)IntPtr.Size + (nuint)sizeof(T) * (nuint)len)
+        {
+            ThrowHelpers.ThrowSizeofRawTooSmall<T>(len, sizeofRaw);
+            return null;
+        }
+
+        return FakeArrayTrusted<T>((void*)o, len);
+    }
+
+    /// <summary>
+    /// Establishes memory that can be treated as an array of <typeparamref name="T"/> starting exactly at <paramref name="raw"/>, assuming alignment and enough space for the fake's object header guarantees (the sync block is established at <paramref name="raw"/>).
+    /// Violating any of the constraints will probably yield an unusable array.
+    /// </summary>
+    internal static unsafe T[] FakeArrayTrusted<T>(void* raw, int len) where T : unmanaged
     {
         var size = (nuint)IntPtr.Size;
-        var o = ((nuint)raw + size + (size - 1)) & ~(size - 1); // IntPtr-aligned, header room before
-        *(nint*)(o - size) = 0;                         // sync block
-        *(nint*)o = typeof(byte[]).TypeHandle.Value;    // MethodTable*
-        *(int*)(o + size) = len;                        // length
-        return Unsafe.As<nuint, byte[]>(ref o);
+        ref var header = ref Unsafe.AsRef<ObjectHeader>(raw);
+        header.SyncBlock = 0;
+        header.MethodTablePointer = typeof(T[]).TypeHandle.Value;
+        header.Length = len;
+        var objRef = (nint)Unsafe.AsPointer(ref header.MethodTablePointer);
+        return Unsafe.As<nint, T[]>(ref objRef);
+    }
+
+    internal static unsafe void Neutralize<T>(T[] array) where T : unmanaged
+    {
+        // Length is the only thing we need to nuke
+        // .CopyTo/.Length/foreach become no-ops, indexing throws
+        // GC tracing reads .Length == and does nothing since there's not data to track
+        var objRef = Unsafe.As<T[], nint>(ref array);
+        ref var header = ref Unsafe.AsRef<ObjectHeader>((void*)(objRef - IntPtr.Size));
+        header.Length = 0;
     }
 }

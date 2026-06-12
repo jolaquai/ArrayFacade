@@ -8,9 +8,6 @@ internal static class RuntimeHelpersEx
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsReferenceOrContainsReferences<T>()
-#if NET10_0_OR_GREATER
-        where T : allows ref struct
-#endif
 #if NETSTANDARD2_0
         => TypeData<T>.IsReferenceOrContainsReferences;
 #else

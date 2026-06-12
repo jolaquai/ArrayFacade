@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net48;net11.0</TargetFrameworks>
+    <RuntimeIdentifiers>win-x86;win-x64;linux-x86;linux-x64</RuntimeIdentifiers>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <UseMicrosoftTestingPlatformRunner>True</UseMicrosoftTestingPlatformRunner>
+    <UseRuntimeAsync>True</UseRuntimeAsync>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+
+    <ProjectReference Include="..\ArrayFacade\ArrayFacade.csproj" />
+
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+      <PackageReference Include="System.Memory" Version="4.6.3" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net11.0'">
+    <Compile Remove="**\*net11.0*.cs" />
+    <None Include="**\*net11.0*.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,11 +1,22 @@
 <Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Optimize" />
+    <BuildType Name="Release" />
+  </Configurations>
   <Folder Name="/Solution Items/">
     <File Path=".gitattributes" />
     <File Path=".gitignore" />
     <File Path="Directory.Build.props" />
+    <File Path="global.json" />
     <File Path="LICENSE" />
     <File Path="README.md" />
     <File Path="push-nuget.ps1" />
   </Folder>
-  <Project Path="ArrayFacade/ArrayFacade.csproj" />
+  <Project Path="ArrayFacade.Tests/ArrayFacade.Tests.csproj">
+    <BuildType Solution="Optimize|*" Project="Release" />
+  </Project>
+  <Project Path="ArrayFacade/ArrayFacade.csproj">
+    <BuildType Solution="Optimize|*" Project="Debug" />
+  </Project>
 </Solution>
