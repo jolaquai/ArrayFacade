@@ -42,7 +42,6 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     }
 
     private int call;
-    private nint lastMtp;
 
     /// <summary>
     /// Creates an array fake and executes an <see cref="Action{T}"/> that is passed a reference to that fake.
@@ -188,10 +187,10 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     /// <remarks>
     /// The library cannot help you manage the lifetime of the returned array. Follow all the rules outlined in the usage guidance.
     /// <para/>This API circumvents all attempted safety measures the <see cref="Use{T}(int, Action{T[]})"/> family of methods provide. Leaving the reference returned by this method alive and its fabricated header intact yields a pointer into freed memory.
-    /// <para/>Make sure to call <see cref="Neutralize{T}(T[])"/>, inside a <see langword="finally"/> block if possible, on the returned reference.
-    /// <para/>This API cannot prevent multi-use of the same memory. That is, if you call this method multiple times while the previous fake's reference is still alive, you're now aliasing the same storage with multiple references. If <typeparamref name="T"/> is the same every time, nothing really happens. Any call whose <typeparamref name="T"/> differs from the previous call's type parameter trashes that previous fake's stamped header. Its type now no longer matches what the stamped object header reports, meaning any access is undefined behavior at best and and access violation at worst.
+    /// <para/>Make sure to call <see cref="Neutralize{T}(T[])"/> on the returned reference inside a <see langword="finally"/> block.
+    /// <para/>This API cannot prevent multi-use of the same memory. That is, if you call this method multiple times while the previous fake's reference is still alive, you're now aliasing the same storage with multiple references. If <typeparamref name="T"/> is the same every time, nothing really happens. Any call whose <typeparamref name="T"/> differs from the previous call's type parameter trashes that previous fake's stamped header. Its type now no longer matches what the stamped object header reports, meaning any access is undefined behavior at best and access violation at worst.
     /// </remarks>
-    public T[] StampUnsafe<T>(int length) where T : unmanaged
+    public readonly T[] StampUnsafe<T>(int length) where T : unmanaged
     {
         var array = Factory.FakeArray<T>(raw, length, sizeofRaw);
 
@@ -206,17 +205,11 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
     /// <param name="fake">The fake array to neutralize. A <see langword="null"/> reference or a fake whose length is already <c>0</c> is silently ignored.</param>
     /// <remarks>
-    /// <para>
     /// The <see cref="Use{T}(int, Action{T[]})"/> family of methods neutralize the fake automatically on every
     /// exit path, including exceptions. Call <see cref="Neutralize{T}"/> directly only when the fake was obtained
     /// through a path that bypasses managed lifetime scoping (such as code that stamps the header manually).
-    /// </para>
-    /// <para>
-    /// Always call this from a <see langword="finally"/> block to guarantee neutralization even when the body throws.
-    /// </para>
-    /// <para>
-    /// Only pass fake arrays obtained from this library to this method. Passing a real heap-allocated array is undefined behavior.
-    /// </para>
+    /// <para/>Always call this from a <see langword="finally"/> block to guarantee neutralization even when the body throws.
+    /// <para/>Only pass fake arrays obtained from this library to this method. Passing a real heap-allocated array is undefined behavior.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Neutralize<T>(T[] fake) where T : unmanaged

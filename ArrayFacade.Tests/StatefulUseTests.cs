@@ -26,7 +26,7 @@ public unsafe class StatefulUseTests
                 fake[i] = state + i;
         });
 
-        Assert.True(data != null);
+        Assert.NotNull(data);
         for (var i = 0; i < Len; i++)
             Assert.Equal(0xBEEF + i, data[i]);
     }
@@ -181,12 +181,14 @@ public unsafe class StatefulUseTests
 
         // Stamp without Use's managed scope so Neutralize has a live fake to kill.
         // Factory.FakeArray is accessible via InternalsVisibleTo.
-        var fake = Factory.FakeArray<byte>(buf, Len, size, out _);
+        var fake = Factory.FakeArray<byte>(buf, Len, size);
         Assert.Equal(Len, fake.Length);
 
         ArrayFacadeHandle.Neutralize(fake);
 
+#pragma warning disable xUnit2013 // Do not use equality check to check for collection size.
         Assert.Equal(0, fake.Length);
+#pragma warning restore xUnit2013 // Do not use equality check to check for collection size.
 
         Assert.Throws<IndexOutOfRangeException>(() => IndexerAccess(fake));
 
@@ -210,9 +212,13 @@ public unsafe class StatefulUseTests
         // Use neutralizes; calling Neutralize again on the husk must be a no-op
         byte[] leaked = null;
         new ArrayFacadeHandle(buf, size).Use<byte>(Len, f => leaked = f);
+#pragma warning disable xUnit2013 // Do not use equality check to check for collection size.
         Assert.Equal(0, leaked.Length);
+#pragma warning restore xUnit2013 // Do not use equality check to check for collection size.
 
         ArrayFacadeHandle.Neutralize(leaked); // must not throw or corrupt
+#pragma warning disable xUnit2013 // Do not use equality check to check for collection size.
         Assert.Equal(0, leaked.Length);
+#pragma warning restore xUnit2013 // Do not use equality check to check for collection size.
     }
 }

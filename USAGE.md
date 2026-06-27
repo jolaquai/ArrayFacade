@@ -128,7 +128,7 @@ ref byte firstElement = ref handle.DataOffsetRef;
 ### Unsafe zero-alloc path
 
 *v1.1.0:* The library exposes a truly zero-alloc path that has effectively zero safety nets in place compared to the `Use` family of methods.
-`ArrayFacadeHandle.StampUnsafe<T>(int)` returns the wrapped `T[]`-typed reference directly, with literally no way to prevent misuse, but also requiring zero allocations,
+`ArrayFacadeHandle.StampUnsafe<T>(int)` returns the wrapped `T[]`-typed reference directly, with literally no way to prevent misuse, but also requiring zero allocations.
 
 Calling `StampUnsafe<T>(int)` twice for the same memory location with differing `T`s, no matter if through the same `ArrayFacadeHandle` or a new instance, will trash the previous fake since the object header changes; the type of the reference will no longer match the type the object header reports.
 
