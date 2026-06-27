@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace ArrayFacade.Tests;
 
 /// <summary>
@@ -179,19 +181,17 @@ public unsafe class StatefulUseTests
 
         // Stamp without Use's managed scope so Neutralize has a live fake to kill.
         // Factory.FakeArray is accessible via InternalsVisibleTo.
-        var fake = Factory.FakeArray<byte>(buf, Len, size);
+        var fake = Factory.FakeArray<byte>(buf, Len, size, out _);
         Assert.Equal(Len, fake.Length);
 
         ArrayFacadeHandle.Neutralize(fake);
 
-#pragma warning disable xUnit2013
         Assert.Equal(0, fake.Length);
-#pragma warning restore xUnit2013
 
-        var threw = false;
-        try { _ = fake[0]; }
-        catch (IndexOutOfRangeException) { threw = true; }
-        Assert.True(threw);
+        Assert.Throws<IndexOutOfRangeException>(() => IndexerAccess(fake));
+
+        [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+        static void IndexerAccess(byte[] fake) => _ = fake[0];
     }
 
     [Fact]

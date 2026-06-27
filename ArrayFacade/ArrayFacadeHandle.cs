@@ -42,6 +42,7 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     }
 
     private int call;
+    private nint lastMtp;
 
     /// <summary>
     /// Creates an array fake and executes an <see cref="Action{T}"/> that is passed a reference to that fake.
@@ -84,7 +85,6 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
 
         return (T*)DataOffset;
     }
-
     /// <summary>
     /// Creates an array fake and executes an <see cref="Action{T1, T2}"/> that is passed a reference to that fake
     /// alongside a caller-supplied <paramref name="state"/> value.
@@ -131,7 +131,6 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
 
         return (T*)DataOffset;
     }
-
     /// <summary>
     /// Creates an array fake and executes an <see cref="ArrayRefAction{TElement, TState}"/> that is passed a reference to that fake
     /// alongside a by-reference caller-supplied <paramref name="state"/> value.
@@ -180,15 +179,32 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     }
 
     /// <summary>
-    /// Zeroes the length field of a fake array, rendering it inert:
-    /// all enumeration becomes a no-op, all indexed access throws <see cref="IndexOutOfRangeException"/>,
-    /// and <see cref="Array.Length"/> returns <c>0</c>.
+    /// Creates an array fake and returns a reference to it. The caller is responsible for calling <see cref="Neutralize{T}(T[])"/> on the returned array when done.
+    /// <b>Read the remarks of this API.</b>
     /// </summary>
     /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
-    /// <param name="fake">
-    /// The fake array to neutralize.
-    /// A <see langword="null"/> reference or a fake whose length is already <c>0</c> is silently ignored.
-    /// </param>
+    /// <param name="length">The number of elements of type <typeparamref name="T"/> that the array fake should report as its <see cref="Array.Length"/>. Must be non-negative.</param>
+    /// <returns>A reference to the array fake.</returns>
+    /// <remarks>
+    /// The library cannot help you manage the lifetime of the returned array. Follow all the rules outlined in the usage guidance.
+    /// <para/>This API circumvents all attempted safety measures the <see cref="Use{T}(int, Action{T[]})"/> family of methods provide. Leaving the reference returned by this method alive and its fabricated header intact yields a pointer into freed memory.
+    /// <para/>Make sure to call <see cref="Neutralize{T}(T[])"/>, inside a <see langword="finally"/> block if possible, on the returned reference.
+    /// <para/>This API cannot prevent multi-use of the same memory. That is, if you call this method multiple times while the previous fake's reference is still alive, you're now aliasing the same storage with multiple references. If <typeparamref name="T"/> is the same every time, nothing really happens. Any call whose <typeparamref name="T"/> differs from the previous call's type parameter trashes that previous fake's stamped header. Its type now no longer matches what the stamped object header reports, meaning any access is undefined behavior at best and and access violation at worst.
+    /// </remarks>
+    public T[] StampUnsafe<T>(int length) where T : unmanaged
+    {
+        var array = Factory.FakeArray<T>(raw, length, sizeofRaw);
+
+        Debug.Assert(array is not null);
+        return array;
+    }
+
+    /// <summary>
+    /// Zeroes the length field of a fake array, rendering it inert:
+    /// all enumeration becomes a no-op, all indexed access throws <see cref="IndexOutOfRangeException"/>, and <see cref="Array.Length"/> returns <c>0</c>.
+    /// </summary>
+    /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
+    /// <param name="fake">The fake array to neutralize. A <see langword="null"/> reference or a fake whose length is already <c>0</c> is silently ignored.</param>
     /// <remarks>
     /// <para>
     /// The <see cref="Use{T}(int, Action{T[]})"/> family of methods neutralize the fake automatically on every
@@ -196,29 +212,17 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     /// through a path that bypasses managed lifetime scoping (such as code that stamps the header manually).
     /// </para>
     /// <para>
-    /// Always call this from a <see langword="finally"/> block to guarantee neutralization even when the body throws:
-    /// <code>
-    /// T[] fake = /* stamped by manual means */;
-    /// try
-    /// {
-    ///     fs.Read(fake, 0, count);
-    /// }
-    /// finally
-    /// {
-    ///     ArrayFacadeHandle.Neutralize(fake);
-    /// }
-    /// </code>
+    /// Always call this from a <see langword="finally"/> block to guarantee neutralization even when the body throws.
     /// </para>
     /// <para>
-    /// Only pass fake arrays obtained from this library to this method. Passing a real heap-allocated
-    /// array is undefined behavior.
+    /// Only pass fake arrays obtained from this library to this method. Passing a real heap-allocated array is undefined behavior.
     /// </para>
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Neutralize<T>(T[] fake) where T : unmanaged
     {
-        if (fake == null || fake.Length == 0)
-            return;
-        Factory.Neutralize(fake);
+        if (fake is { Length: > 0 })
+            Factory.Neutralize(fake);
     }
 
     /// <summary>
@@ -228,7 +232,11 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     /// any size computation for one, throws <see cref="PlatformNotSupportedException"/> before touching memory.
     /// Zero-length use remains valid on any runtime.
     /// </summary>
-    public static bool IsSupported => Factory.IsSupported;
+    public static bool IsSupported
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Factory.IsSupported;
+    }
 
     private static readonly nuint _worstAlignDiff = (nuint)IntPtr.Size - 1;
 
