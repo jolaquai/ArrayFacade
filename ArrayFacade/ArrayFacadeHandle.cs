@@ -84,6 +84,139 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
 
         return (T*)DataOffset;
     }
+    /// <summary>
+    /// Creates an array fake and executes an <see cref="Action{T1, T2}"/> that is passed a reference to that fake
+    /// alongside a caller-supplied <paramref name="state"/> value.
+    /// Passing context via <paramref name="state"/> instead of capturing variables in a lambda
+    /// eliminates the closure allocation that would otherwise occur on hot paths.
+    /// </summary>
+    /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
+    /// <typeparam name="TState">The type of the caller-supplied state value passed through to <paramref name="action"/>.</typeparam>
+    /// <param name="length">The number of elements of type <typeparamref name="T"/> that the array fake should report as its <see cref="Array.Length"/>. Must be non-negative.</param>
+    /// <param name="state">A value passed through verbatim to <paramref name="action"/>. Not inspected or modified by this method.</param>
+    /// <param name="action">The action to execute, which is passed a reference to the array fake and <paramref name="state"/>. Extracting the array reference anywhere outside the scope of the <paramref name="action"/> will lead to memory corruption (free-after-use).</param>
+    /// <returns>A pointer to the location in memory where the first element of the array fake would be. Must be null-checked before use.</returns>
+    public T* Use<T, TState>(int length, TState state, Action<T[], TState> action) where T : unmanaged
+    {
+        if (Interlocked.Exchange(ref call, 1) == 1)
+        {
+            ThrowHelpers.ThrowAttemptedAliasing();
+            return default;
+        }
+
+        try
+        {
+            if (length == 0)
+                action([], state);
+            else
+            {
+                var array = Factory.FakeArray<T>(raw, length, sizeofRaw);
+                try
+                {
+                    Debug.Assert(array is not null);
+
+                    action(array, state);
+                }
+                finally
+                {
+                    Factory.Neutralize(array);
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref call, 0);
+        }
+
+        return (T*)DataOffset;
+    }
+    /// <summary>
+    /// Creates an array fake and executes an <see cref="ArrayRefAction{TElement, TState}"/> that is passed a reference to that fake
+    /// alongside a by-reference caller-supplied <paramref name="state"/> value.
+    /// Passing context by reference via <paramref name="state"/> avoids both the closure allocation and any copy of the state value,
+    /// and allows the action to write results back to the caller without additional allocation.
+    /// </summary>
+    /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
+    /// <typeparam name="TState">The type of the by-reference caller-supplied state value passed through to <paramref name="action"/>.</typeparam>
+    /// <param name="length">The number of elements of type <typeparamref name="T"/> that the array fake should report as its <see cref="Array.Length"/>. Must be non-negative.</param>
+    /// <param name="state">A by-reference value passed through to <paramref name="action"/>. May be read and mutated by the action; changes are visible to the caller after <paramref name="action"/> returns.</param>
+    /// <param name="action">The action to execute, which is passed a reference to the array fake and a by-reference <paramref name="state"/>. Extracting the array reference anywhere outside the scope of the <paramref name="action"/> will lead to memory corruption (free-after-use).</param>
+    /// <returns>A pointer to the location in memory where the first element of the array fake would be. Must be null-checked before use.</returns>
+    public T* Use<T, TState>(int length, ref TState state, ArrayRefAction<T, TState> action) where T : unmanaged
+    {
+        if (Interlocked.Exchange(ref call, 1) == 1)
+        {
+            ThrowHelpers.ThrowAttemptedAliasing();
+            return default;
+        }
+
+        try
+        {
+            if (length == 0)
+                action([], ref state);
+            else
+            {
+                var array = Factory.FakeArray<T>(raw, length, sizeofRaw);
+                try
+                {
+                    Debug.Assert(array is not null);
+
+                    action(array, ref state);
+                }
+                finally
+                {
+                    Factory.Neutralize(array);
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref call, 0);
+        }
+
+        return (T*)DataOffset;
+    }
+
+    /// <summary>
+    /// Creates an array fake and returns a reference to it. The caller is responsible for calling <see cref="Neutralize{T}(T[])"/> on the returned array when done.
+    /// <b>Read the remarks of this API.</b>
+    /// </summary>
+    /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
+    /// <param name="length">The number of elements of type <typeparamref name="T"/> that the array fake should report as its <see cref="Array.Length"/>. Must be non-negative.</param>
+    /// <returns>A reference to the array fake.</returns>
+    /// <remarks>
+    /// The library cannot help you manage the lifetime of the returned array. Follow all the rules outlined in the usage guidance.
+    /// <para/>This API circumvents all attempted safety measures the <see cref="Use{T}(int, Action{T[]})"/> family of methods provide. Leaving the reference returned by this method alive and its fabricated header intact yields a pointer into freed memory.
+    /// <para/>Make sure to call <see cref="Neutralize{T}(T[])"/> on the returned reference inside a <see langword="finally"/> block.
+    /// <para/>This API cannot prevent multi-use of the same memory. That is, if you call this method multiple times while the previous fake's reference is still alive, you're now aliasing the same storage with multiple references. If <typeparamref name="T"/> is the same every time, nothing really happens. Any call whose <typeparamref name="T"/> differs from the previous call's type parameter trashes that previous fake's stamped header. Its type now no longer matches what the stamped object header reports, meaning any access is undefined behavior at best and access violation at worst.
+    /// </remarks>
+    public readonly T[] StampUnsafe<T>(int length) where T : unmanaged
+    {
+        var array = Factory.FakeArray<T>(raw, length, sizeofRaw);
+
+        Debug.Assert(array is not null);
+        return array;
+    }
+
+    /// <summary>
+    /// Zeroes the length field of a fake array, rendering it inert:
+    /// all enumeration becomes a no-op, all indexed access throws <see cref="IndexOutOfRangeException"/>, and <see cref="Array.Length"/> returns <c>0</c>.
+    /// </summary>
+    /// <typeparam name="T">The element type of the array fake. Must be an unmanaged type.</typeparam>
+    /// <param name="fake">The fake array to neutralize. A <see langword="null"/> reference or a fake whose length is already <c>0</c> is silently ignored.</param>
+    /// <remarks>
+    /// The <see cref="Use{T}(int, Action{T[]})"/> family of methods neutralize the fake automatically on every
+    /// exit path, including exceptions. Call <see cref="Neutralize{T}"/> directly only when the fake was obtained
+    /// through a path that bypasses managed lifetime scoping (such as code that stamps the header manually).
+    /// <para/>Always call this from a <see langword="finally"/> block to guarantee neutralization even when the body throws.
+    /// <para/>Only pass fake arrays obtained from this library to this method. Passing a real heap-allocated array is undefined behavior.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Neutralize<T>(T[] fake) where T : unmanaged
+    {
+        if (fake is { Length: > 0 })
+            Factory.Neutralize(fake);
+    }
 
     /// <summary>
     /// Gets whether the current runtime lays objects out the way this library fabricates them.
@@ -92,7 +225,11 @@ public unsafe ref struct ArrayFacadeHandle(void* raw, int sizeofRaw)
     /// any size computation for one, throws <see cref="PlatformNotSupportedException"/> before touching memory.
     /// Zero-length use remains valid on any runtime.
     /// </summary>
-    public static bool IsSupported => Factory.IsSupported;
+    public static bool IsSupported
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Factory.IsSupported;
+    }
 
     private static readonly nuint _worstAlignDiff = (nuint)IntPtr.Size - 1;
 

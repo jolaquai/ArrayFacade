@@ -125,6 +125,27 @@ handle.Use<byte>(10, fake =>
 ref byte firstElement = ref handle.DataOffsetRef;
 ```
 
+### Unsafe zero-alloc path
+
+*v1.1.0:* The library exposes a truly zero-alloc path that has effectively zero safety nets in place compared to the `Use` family of methods.
+`ArrayFacadeHandle.StampUnsafe<T>(int)` returns the wrapped `T[]`-typed reference directly, with literally no way to prevent misuse, but also requiring zero allocations.
+
+Calling `StampUnsafe<T>(int)` twice for the same memory location with differing `T`s, no matter if through the same `ArrayFacadeHandle` or a new instance, will trash the previous fake since the object header changes; the type of the reference will no longer match the type the object header reports.
+
+```csharp
+byte[] fake = new ArrayFacadeHandle(ptr, size).StampUnsafe<byte>(256);
+try
+{
+    // ...
+}
+finally
+{
+    ArrayFacadeHandle.Neutralize(fake);
+}
+```
+
+Fakes must be manually destroyed using `ArrayFacadeHandle.Neutralize(T[])`. Not doing so will yield dangling references once the backing memory is freed.
+
 ## Re-entrancy and reuse
 
 A handle is freely **reusable sequentially**, including across different element types `T` by design; each `Use` call stamps, runs, and neutralizes independently. This allows effectively zero-work reinterprets of data written into the fake's backing memory: neutralization only zeroes the header's length field, never the data, and element 0 of *every* fake sits at the same address (`AlignUp(raw) + 3 * IntPtr.Size`) regardless of `T`.

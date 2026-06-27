@@ -117,7 +117,7 @@ internal static class Factory
     /// On .NET Framework, <c>typeof(T[]).TypeHandle.Value</c> is a tagged ArrayTypeDesc*, NOT the MethodTable*,
     /// so it must never be stamped into an object header; reading a real array's header works on every runtime.
     /// </summary>
-    private static class ArrayMethodTable<T> where T : unmanaged
+    internal static class ArrayMethodTable<T> where T : unmanaged
     {
         public static readonly nint Value = Read();
         private static unsafe nint Read()
@@ -149,7 +149,7 @@ internal static class Factory
     {
         // Length is the only thing we need to nuke
         // .CopyTo/.Length/foreach become no-ops, indexing throws
-        // GC tracing reads .Length == and does nothing since there's not data to track
+        // GC tracing reads .Length == and does nothing since there's no data to track
         var objRef = Unsafe.As<T[], nint>(ref array);
         ref var header = ref Unsafe.AsRef<ObjectHeader>((void*)(objRef - IntPtr.Size));
         header.Length = 0;
